@@ -58,21 +58,21 @@ func NewIpStore(filename string) *IpStore {
 
 // 获取ip的位置信息
 func (this *IpStore) GetGeoByIp(ipSearch string) (location map[string]string, err error) {
-	row, err := this.getIpRangeInfo(ipSearch)
+	row, err := this.searchIpRow(ipSearch)
 	if err != nil {
 		return location, err
 	}
-	location, err = this.parseIpLocation(row)
+	location, err = this.parseIpGeo(row)
 	return location, err
 }
 
 // 获取ip的区域编码
 func (this *IpStore) GetGeocodeByIp(ipSearch string) (uint64, error) {
-	row, err := this.getIpRangeInfo(ipSearch)
+	row, err := this.searchIpRow(ipSearch)
 	if err != nil {
 		return 0, err
 	}
-	areacode := this.getLocationCodeByRow(row)
+	areacode := this.getGeocodeByRow(row)
 	codeUint64, err := strconv.ParseUint(areacode, 10, 64)
 	if err != nil {
 		return 0, err
@@ -103,7 +103,7 @@ func (this *IpStore) GetMetaTable() map[string][]string {
 }
 
 // 获取ip所在ip段的信息
-func (this *IpStore) getIpRangeInfo(ipSearch string) (row IpRow, err error) {
+func (this *IpStore) searchIpRow(ipSearch string) (row IpRow, err error) {
 	search := uint32(IP2Num(ipSearch))
 	// fmt.Println(search)
 	var start uint32 = 0
@@ -185,20 +185,20 @@ func (this *IpStore) parseMeta(file *os.File) (err error) {
 	return json.Unmarshal(this.metaBuffer, &this.metaTable)
 }
 
-func (this *IpStore) parseIpLocation(row IpRow) (map[string]string, error) {
-	location := make(map[string]string)
-	location[AREA_COUNTRY] = this.metaTable[AREA_COUNTRY][row.Country]
-	location[AREA_PROVINCE] = this.metaTable[AREA_PROVINCE][row.Province]
-	location[AREA_CITY] = this.metaTable[AREA_CITY][row.City]
-	location[AREA_ZONE] = this.metaTable[AREA_ZONE][row.Zone]
-	location[AREA_LOCATION] = this.metaTable[AREA_LOCATION][row.Location]
-	location[AREA_OPERATOR] = this.metaTable[AREA_OPERATOR][row.Operator]
-	location["areacode"] = this.getLocationCodeByRow(row)
-	return location, nil
+func (this *IpStore) parseIpGeo(row IpRow) (map[string]string, error) {
+	geo := make(map[string]string)
+	geo[AREA_COUNTRY] = this.metaTable[AREA_COUNTRY][row.Country]
+	geo[AREA_PROVINCE] = this.metaTable[AREA_PROVINCE][row.Province]
+	geo[AREA_CITY] = this.metaTable[AREA_CITY][row.City]
+	geo[AREA_ZONE] = this.metaTable[AREA_ZONE][row.Zone]
+	geo[AREA_LOCATION] = this.metaTable[AREA_LOCATION][row.Location]
+	geo[AREA_OPERATOR] = this.metaTable[AREA_OPERATOR][row.Operator]
+	geo["areacode"] = this.getGeocodeByRow(row)
+	return geo, nil
 
 }
 
-func (this *IpStore) getLocationCodeByRow(row IpRow) string {
+func (this *IpStore) getGeocodeByRow(row IpRow) string {
 	countryCode := strconv.Itoa(int(row.Country))
 	provinceCode := fmt.Sprintf("%04d", row.Province)
 	cityCode := fmt.Sprintf("%04d", row.City)
@@ -281,12 +281,12 @@ type datFile struct {
 
 func NewDatFile(w io.Writer) *datFile {
 	m := map[string]map[string]uint16{
-		"country":  make(map[string]uint16),
-		"province": make(map[string]uint16),
-		"city":     make(map[string]uint16),
-		"zone":     make(map[string]uint16),
-		"location": make(map[string]uint16),
-		"operator": make(map[string]uint16),
+		AREA_COUNTRY:  make(map[string]uint16),
+		AREA_PROVINCE: make(map[string]uint16),
+		AREA_CITY:     make(map[string]uint16),
+		AREA_ZONE:     make(map[string]uint16),
+		AREA_LOCATION: make(map[string]uint16),
+		AREA_OPERATOR: make(map[string]uint16),
 	}
 	return &datFile{
 		Buffer:   bytes.NewBuffer(nil),
