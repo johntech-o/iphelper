@@ -11,7 +11,7 @@ u can find example in the iphelper_test.go
 
 // get geo info of ip address
 
-	geo, e := store.GetIpGeo("43.240.79.255")
+	geo, e := store.GetGeoByIp("43.240.79.255")
 
 //  output:map[country:中国 province:上海市 city:上海市 zone:未知 location:未知 operator:未知 areacode:20017009000000100] <nil>
 
@@ -21,7 +21,7 @@ u can find example in the iphelper_test.go
 
 //  get areacode of ip address
 
-	code, e := store.GetIpAreacode("43.240.79.255")
+	code, e := store.GetGeocodeByIp("43.240.79.255")
 
 	// 	output: 20017009000000100 <nil>
 
@@ -33,7 +33,7 @@ u can find example in the iphelper_test.go
 
 // get the geo info by areacode is more fast than by ip address
 
-	codeGeo := store.GetAreacodeGeo(code)
+	codeGeo := store.GetGeoByGeocode(code)
 
 //  output:map[country:中国 province:上海市 city:上海市 zone:未知 location:未知 operator:未知 areacode:20017009000000100] <nil>
 
