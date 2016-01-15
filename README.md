@@ -11,9 +11,9 @@ u can find example in the iphelper_test.go
 
 // get geo info of ip address
 
-	geo, e := store.GetGeoByIp("43.240.79.255")
+	geo, e := store.GetGeoByIp("101.52.255.200")
 
-//  output:map[country:中国 province:上海市 city:上海市 zone:未知 location:未知 operator:未知 areacode:20017009000000100] <nil>
+//  map[country:中国 province:北京市 city:北京市 zone:朝阳区 location:未知 operator:电信 areacode:20003000100370101]
 
 	
 	fmt.Println(geo, e)
@@ -21,9 +21,9 @@ u can find example in the iphelper_test.go
 
 //  get areacode of ip address
 
-	code, e := store.GetGeocodeByIp("43.240.79.255")
+	code, e := store.GetGeocodeByIp("101.52.255.200")
 
-	// 	output: 20017009000000100 <nil>
+	// 20017009000000100 <nil>
 
 	fmt.Println(code, e)
 
@@ -35,7 +35,7 @@ u can find example in the iphelper_test.go
 
 	codeGeo := store.GetGeoByGeocode(code)
 
-//  output:map[country:中国 province:上海市 city:上海市 zone:未知 location:未知 operator:未知 areacode:20017009000000100] <nil>
+//  map[country:中国 province:上海市 city:上海市 zone:未知 location:未知 operator:未知 areacode:20017009000000100]
 
 	fmt.Println(codeGeo)
 
