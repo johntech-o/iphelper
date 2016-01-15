@@ -56,8 +56,18 @@ func NewIpStore(filename string) *IpStore {
 	return &store
 }
 
+// 获取ip的位置信息
+func (this *IpStore) GetGeoByIp(ipSearch string) (location map[string]string, err error) {
+	row, err := this.getIpRangeInfo(ipSearch)
+	if err != nil {
+		return location, err
+	}
+	location, err = this.parseIpLocation(row)
+	return location, err
+}
+
 // 获取ip的区域编码
-func (this *IpStore) GetIpAreacode(ipSearch string) (uint64, error) {
+func (this *IpStore) GetGeocodeByIp(ipSearch string) (uint64, error) {
 	row, err := this.getIpRangeInfo(ipSearch)
 	if err != nil {
 		return 0, err
@@ -71,22 +81,7 @@ func (this *IpStore) GetIpAreacode(ipSearch string) (uint64, error) {
 
 }
 
-// 获取ip的位置信息
-func (this *IpStore) GetIpGeo(ipSearch string) (location map[string]string, err error) {
-	row, err := this.getIpRangeInfo(ipSearch)
-	if err != nil {
-		return location, err
-	}
-	location, err = this.parseIpLocation(row)
-	return location, err
-}
-
-// 获取ip的区域信息列表
-func (this *IpStore) GetMetaTable() map[string][]string {
-	return this.metaTable
-}
-
-func (this *IpStore) GetAreacodeGeo(areacode uint64) map[string]string {
+func (this *IpStore) GetGeoByGeocode(areacode uint64) map[string]string {
 	result := map[string]string{}
 	result[AREA_OPERATOR] = this.metaTable[AREA_OPERATOR][areacode%100]
 	areacode /= 100
@@ -100,6 +95,11 @@ func (this *IpStore) GetAreacodeGeo(areacode uint64) map[string]string {
 	areacode /= 10000
 	result[AREA_COUNTRY] = this.metaTable[AREA_COUNTRY][areacode%10000]
 	return result
+}
+
+// 获取ip的区域信息列表
+func (this *IpStore) GetMetaTable() map[string][]string {
+	return this.metaTable
 }
 
 // 获取ip所在ip段的信息
