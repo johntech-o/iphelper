@@ -16,16 +16,16 @@ u can find example in the iphelper_test.go
 //  map[country:中国 province:北京市 city:北京市 zone:朝阳区 location:未知 operator:电信 areacode:20003000100370101]
 
 	
-	fmt.Println(geo, e)
+	fmt.Println(geo)
 
 
 //  get areacode of ip address
 
 	code, e := store.GetGeocodeByIp("101.52.255.200")
 
-	// 20017009000000100 <nil>
+	// 20003000100370101
 
-	fmt.Println(code, e)
+	fmt.Println(code)
 
 // get the geo info of areacode
 
