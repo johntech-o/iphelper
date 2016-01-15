@@ -1,10 +1,13 @@
 package iphelper
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"strconv"
@@ -12,8 +15,17 @@ import (
 )
 
 const (
-	HEADER_LENGTH   = 8
+	HEADER_LENGTH   = 4
 	BODYLINE_LENGTH = 20
+)
+
+const (
+	AREA_COUNTRY  = "country"
+	AREA_PROVINCE = "province"
+	AREA_CITY     = "city"
+	AREA_ZONE     = "zone"
+	AREA_LOCATION = "location"
+	AREA_OPERATOR = "operator"
 )
 
 // 获取ip段信息
@@ -24,8 +36,8 @@ type IpRow struct {
 	Province uint16
 	City     uint16
 	Zone     uint16
-	Provider uint16
-	Idc      uint16
+	Location uint16
+	Operator uint16
 }
 
 type IpStore struct {
@@ -60,7 +72,7 @@ func (this *IpStore) GetIpAreacode(ipSearch string) (uint64, error) {
 }
 
 // 获取ip的位置信息
-func (this *IpStore) GetIpLocation(ipSearch string) (location map[string]string, err error) {
+func (this *IpStore) GetIpGeo(ipSearch string) (location map[string]string, err error) {
 	row, err := this.getIpRangeInfo(ipSearch)
 	if err != nil {
 		return location, err
@@ -74,19 +86,19 @@ func (this *IpStore) GetMetaTable() map[string][]string {
 	return this.metaTable
 }
 
-func (this *IpStore) GetAreacodeLocation(areacode uint64) map[string]string {
+func (this *IpStore) GetAreacodeGeo(areacode uint64) map[string]string {
 	result := map[string]string{}
-	result["idc"] = this.metaTable["idc"][areacode%100]
+	result[AREA_OPERATOR] = this.metaTable[AREA_OPERATOR][areacode%100]
 	areacode /= 100
-	result["[rovider"] = this.metaTable["provider"][areacode%100]
+	result[AREA_LOCATION] = this.metaTable[AREA_LOCATION][areacode%100]
 	areacode /= 100
-	result["zone"] = this.metaTable["zone"][areacode%10000]
+	result[AREA_ZONE] = this.metaTable[AREA_ZONE][areacode%10000]
 	areacode /= 10000
-	result["city"] = this.metaTable["city"][areacode%10000]
+	result[AREA_CITY] = this.metaTable[AREA_CITY][areacode%10000]
 	areacode /= 10000
-	result["province"] = this.metaTable["province"][areacode%10000]
+	result[AREA_PROVINCE] = this.metaTable[AREA_PROVINCE][areacode%10000]
 	areacode /= 10000
-	result["country"] = this.metaTable["country"][areacode%10000]
+	result[AREA_COUNTRY] = this.metaTable[AREA_COUNTRY][areacode%10000]
 	return result
 }
 
@@ -122,53 +134,35 @@ func (this *IpStore) parseStore(filename string) {
 	if err != nil {
 		panic("error opening file: %v\n" + err.Error())
 	}
-	if _, err := file.Read(this.headerBuffer); err != nil {
+	defer file.Close()
+	fmt.Println("open file: ", filename)
+	var buf [HEADER_LENGTH]byte
+
+	if _, err := file.Read(buf[0:4]); err != nil {
 		panic("error read header" + err.Error())
 	}
-	if err := this.parseHeader(); err != nil {
-		panic("parse header error:" + err.Error())
+
+	this.bodyLength = binary.BigEndian.Uint32(buf[0:4])
+	fmt.Println("body length is: ", this.bodyLength)
+	if _, err := file.Read(buf[0:4]); err != nil {
+		panic("error read header" + err.Error())
 	}
+	this.metaLength = binary.BigEndian.Uint32(buf[0:4])
+	fmt.Println("meta length is: ", this.metaLength)
+	if err := this.paseBody(file); err != nil {
+		panic("parse body  failed:" + err.Error())
+	}
+
+	if err := this.parseMeta(file); err != nil {
+		panic("pase meta failed" + err.Error())
+	}
+}
+
+func (this *IpStore) paseBody(file *os.File) error {
 	this.bodyBuffer = make([]byte, this.bodyLength)
-	if _, err := file.ReadAt(this.bodyBuffer, HEADER_LENGTH); err != nil {
+	if _, err := file.ReadAt(this.bodyBuffer, HEADER_LENGTH+HEADER_LENGTH); err != nil {
 		panic("read body error")
 	}
-	this.metaBuffer = make([]byte, this.metaLength)
-	if _, err := file.ReadAt(this.metaBuffer, int64(HEADER_LENGTH+this.bodyLength)); err != nil {
-		panic("read meta error")
-	}
-	if err := this.paseBody(); err != nil {
-		panic("parse body  failed")
-	}
-	if err := this.parseMeta(); err != nil {
-		panic("pase meta failed")
-	}
-}
-
-func (this *IpStore) parseIpLocation(row IpRow) (map[string]string, error) {
-	location := make(map[string]string)
-	location["country"] = this.metaTable["country"][row.Country]
-	location["province"] = this.metaTable["province"][row.Province]
-	location["city"] = this.metaTable["city"][row.City]
-	location["zone"] = this.metaTable["zone"][row.Zone]
-	location["provider"] = this.metaTable["provider"][row.Provider]
-	location["idc"] = this.metaTable["idc"][row.Idc]
-	location["areacode"] = this.getLocationCodeByRow(row)
-	return location, nil
-
-}
-
-func (this *IpStore) getLocationCodeByRow(row IpRow) string {
-	countryCode := strconv.Itoa(int(row.Country))
-	provinceCode := fmt.Sprintf("%04d", row.Province)
-	cityCode := fmt.Sprintf("%04d", row.City)
-	zoneCode := fmt.Sprintf("%04d", row.Zone)
-	provoderCode := fmt.Sprintf("%02d", row.Provider)
-	idcCode := fmt.Sprintf("%02d", row.Idc)
-	return countryCode + provinceCode + cityCode + zoneCode + provoderCode + idcCode
-
-}
-
-func (this *IpStore) paseBody() error {
 	buf := bytes.NewBuffer(this.bodyBuffer)
 	var offset uint32 = 0
 	for offset < this.bodyLength {
@@ -183,114 +177,66 @@ func (this *IpStore) paseBody() error {
 	return nil
 }
 
-func (this *IpStore) parseMeta() (err error) {
-	var countryLength, provinceLength, cityLength, zoneLength, providerLength, idcLength uint32 = 0, 0, 0, 0, 0, 0
-	var offset uint32 = 4
-	buf := bytes.NewBuffer(this.metaBuffer[0:offset])
-	if err = binary.Read(buf, binary.BigEndian, &countryLength); err != nil {
-		return err
+func (this *IpStore) parseMeta(file *os.File) (err error) {
+	this.metaBuffer = make([]byte, this.metaLength)
+	if _, err := file.ReadAt(this.metaBuffer, int64(HEADER_LENGTH+HEADER_LENGTH+this.bodyLength)); err != nil {
+		panic("read meta error")
 	}
-	countryMeta := this.metaBuffer[offset : offset+countryLength]
-	this.metaTable["country"] = strings.Split(string(countryMeta), "|")
+	return json.Unmarshal(this.metaBuffer, &this.metaTable)
+}
 
-	offset = 4 + countryLength
-	buf = bytes.NewBuffer(this.metaBuffer[offset : offset+4])
-	if err = binary.Read(buf, binary.BigEndian, &provinceLength); err != nil {
-		return err
-	}
-	offset += 4
-	provinceMeta := this.metaBuffer[offset : offset+provinceLength]
-	this.metaTable["province"] = strings.Split(string(provinceMeta), "|")
+func (this *IpStore) parseIpLocation(row IpRow) (map[string]string, error) {
+	location := make(map[string]string)
+	location[AREA_COUNTRY] = this.metaTable[AREA_COUNTRY][row.Country]
+	location[AREA_PROVINCE] = this.metaTable[AREA_PROVINCE][row.Province]
+	location[AREA_CITY] = this.metaTable[AREA_CITY][row.City]
+	location[AREA_ZONE] = this.metaTable[AREA_ZONE][row.Zone]
+	location[AREA_LOCATION] = this.metaTable[AREA_LOCATION][row.Location]
+	location[AREA_OPERATOR] = this.metaTable[AREA_OPERATOR][row.Operator]
+	location["areacode"] = this.getLocationCodeByRow(row)
+	return location, nil
 
-	offset += provinceLength
-	buf = bytes.NewBuffer(this.metaBuffer[offset : offset+4])
-	if err = binary.Read(buf, binary.BigEndian, &cityLength); err != nil {
-		return err
-	}
-	offset += 4
-	cityMeta := this.metaBuffer[offset : offset+cityLength]
-	this.metaTable["city"] = strings.Split(string(cityMeta), "|")
+}
 
-	offset += cityLength
-	buf = bytes.NewBuffer(this.metaBuffer[offset : offset+4])
-	if err = binary.Read(buf, binary.BigEndian, &zoneLength); err != nil {
-		return err
-	}
-	offset += 4
-	zoneMeta := this.metaBuffer[offset : offset+zoneLength]
-	this.metaTable["zone"] = strings.Split(string(zoneMeta), "|")
+func (this *IpStore) getLocationCodeByRow(row IpRow) string {
+	countryCode := strconv.Itoa(int(row.Country))
+	provinceCode := fmt.Sprintf("%04d", row.Province)
+	cityCode := fmt.Sprintf("%04d", row.City)
+	zoneCode := fmt.Sprintf("%04d", row.Zone)
+	provoderCode := fmt.Sprintf("%02d", row.Location)
+	OperatorCode := fmt.Sprintf("%02d", row.Operator)
+	return countryCode + provinceCode + cityCode + zoneCode + provoderCode + OperatorCode
 
-	offset += zoneLength
-	buf = bytes.NewBuffer(this.metaBuffer[offset : offset+4])
-	if err = binary.Read(buf, binary.BigEndian, &providerLength); err != nil {
-		return err
-	}
-	offset += 4
-	providerMeta := this.metaBuffer[offset : offset+providerLength]
-	this.metaTable["provider"] = strings.Split(string(providerMeta), "|")
-
-	offset += providerLength
-	buf = bytes.NewBuffer(this.metaBuffer[offset : offset+4])
-	if err = binary.Read(buf, binary.BigEndian, &idcLength); err != nil {
-		return err
-	}
-	offset += 4
-	idcMeta := this.metaBuffer[offset : offset+idcLength]
-	this.metaTable["idc"] = strings.Split(string(idcMeta), "|")
-	return nil
 }
 
 func (this *IpStore) parseBodyLine(buffer []byte) (row IpRow, err error) {
-	buf := bytes.NewBuffer(buffer[0:4])
+	buf := bytes.NewBuffer(buffer)
 	if err = binary.Read(buf, binary.BigEndian, &row.Start); err != nil {
 		goto fail
 	}
-	buf = bytes.NewBuffer(buffer[4:8])
 	if err = binary.Read(buf, binary.BigEndian, &row.End); err != nil {
 		goto fail
 	}
-	buf = bytes.NewBuffer(buffer[8:10])
 	if err = binary.Read(buf, binary.BigEndian, &row.Country); err != nil {
 		goto fail
 	}
-	buf = bytes.NewBuffer(buffer[10:12])
 	if err = binary.Read(buf, binary.BigEndian, &row.Province); err != nil {
 		goto fail
 	}
-	buf = bytes.NewBuffer(buffer[12:14])
 	if err = binary.Read(buf, binary.BigEndian, &row.City); err != nil {
 		goto fail
 	}
-	buf = bytes.NewBuffer(buffer[14:16])
 	if err = binary.Read(buf, binary.BigEndian, &row.Zone); err != nil {
 		goto fail
 	}
-	buf = bytes.NewBuffer(buffer[16:18])
-	if err = binary.Read(buf, binary.BigEndian, &row.Provider); err != nil {
+	if err = binary.Read(buf, binary.BigEndian, &row.Location); err != nil {
 		goto fail
 	}
-	buf = bytes.NewBuffer(buffer[18:20])
-	if err = binary.Read(buf, binary.BigEndian, &row.Idc); err != nil {
+	if err = binary.Read(buf, binary.BigEndian, &row.Operator); err != nil {
 		goto fail
 	}
-	// fmt.Println(row)
-	return row, err
-
 fail:
 	return row, err
-
-}
-
-func (this *IpStore) parseHeader() error {
-	buf := bytes.NewBuffer(this.headerBuffer[0:4])
-	if err := binary.Read(buf, binary.BigEndian, &this.bodyLength); err != nil {
-		return err
-	}
-	buf = bytes.NewBuffer(this.headerBuffer[4:])
-	if err := binary.Read(buf, binary.BigEndian, &this.metaLength); err != nil {
-		return err
-	}
-	return nil
 }
 
 func IP2Num(requestip string) uint64 {
@@ -320,4 +266,126 @@ func Num2IP(ipnum uint64) string {
 		strconv.FormatUint(byte2, 10) + "." +
 		strconv.FormatUint(byte1, 10)
 	return result
+}
+
+type datFile struct {
+	err error
+	*bytes.Buffer
+	headerLength int
+	bodyLength   int
+	geoMap       map[string]map[string]uint16
+	geoSlice     map[string][]string
+	operator     map[string]int
+	writer       io.Writer
+}
+
+func NewDatFile(w io.Writer) *datFile {
+	m := map[string]map[string]uint16{
+		"country":  make(map[string]uint16),
+		"province": make(map[string]uint16),
+		"city":     make(map[string]uint16),
+		"zone":     make(map[string]uint16),
+		"location": make(map[string]uint16),
+		"operator": make(map[string]uint16),
+	}
+	return &datFile{
+		Buffer:   bytes.NewBuffer(nil),
+		geoMap:   m,
+		geoSlice: make(map[string][]string),
+		writer:   bufio.NewWriter(w),
+	}
+}
+
+// get area code
+func (d *datFile) GetCode(typ string, area string) uint16 {
+	var code uint16
+	code, ok := d.geoMap[typ][area]
+	if !ok {
+		code = uint16(len(d.geoMap[typ]))
+		d.geoMap[typ][area] = code
+		d.geoSlice[typ] = append(d.geoSlice[typ], area)
+	}
+	return code
+}
+
+// @TODO parse fields by reflect the ip row
+func (d *datFile) writeBody(fields []string) error {
+	if d.err != nil {
+		return d.err
+	}
+	start, _ := strconv.ParseUint(fields[0], 10, 32)
+	end, _ := strconv.ParseUint(fields[1], 10, 32)
+	binary.Write(d, binary.BigEndian, uint32(start))
+	binary.Write(d, binary.BigEndian, uint32(end))
+	binary.Write(d, binary.BigEndian, d.GetCode(AREA_COUNTRY, fields[2]))
+	binary.Write(d, binary.BigEndian, d.GetCode(AREA_PROVINCE, fields[3]))
+	binary.Write(d, binary.BigEndian, d.GetCode(AREA_CITY, fields[4]))
+	binary.Write(d, binary.BigEndian, d.GetCode(AREA_ZONE, fields[5]))
+	binary.Write(d, binary.BigEndian, d.GetCode(AREA_LOCATION, fields[6]))
+	binary.Write(d, binary.BigEndian, d.GetCode(AREA_OPERATOR, fields[7]))
+	return d.err
+}
+
+// bodylength|body|metalength|meta
+func (d *datFile) writeFile() error {
+	if d.err != nil {
+		return d.err
+	}
+
+	bodyLength := d.Buffer.Len()
+	meta, err := json.Marshal(d.geoSlice)
+	if err != nil {
+		d.err = err
+		return d.err
+	}
+	metaLength := len(meta)
+
+	binary.Write(d.writer, binary.BigEndian, uint32(bodyLength))
+	binary.Write(d.writer, binary.BigEndian, uint32(metaLength))
+	d.writer.Write(d.Buffer.Bytes())
+	d.writer.Write(meta)
+
+	fmt.Println("meta length is: ", metaLength)
+	fmt.Println("body length is: ", bodyLength)
+	return err
+}
+
+func MakeDat(infile, outfile string) error {
+	in, err := os.Open(infile)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(outfile, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	output := NewDatFile(out)
+	r := bufio.NewReader(in)
+	count := 0
+	for {
+		count++
+		line, err := r.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if len(line) != 0 {
+			fields := strings.Fields(line)
+			if len(fields) != 8 {
+				return errors.New("invalid input file invalid line string")
+			}
+			if err := output.writeBody(fields); err != nil {
+				return err
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+	if err := output.writeFile(); err != nil {
+		return err
+	}
+	fmt.Println("amount ip range from ip source: ", count)
+	return nil
 }

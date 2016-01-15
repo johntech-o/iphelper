@@ -11,14 +11,16 @@ u can find example in the iphelper_test.go
 
 // get location info of ip address
 
-	l, e := store.GetIpLocation("43.240.79.255")
-
-	fmt.Println(l, e)
+	geo, e := store.GetIpGeo("43.240.79.255")
+	
+	fmt.Println(geo, e)
 
 
 //  get location areacode of ip address
 
 	code, e := store.GetIpAreacode("43.240.79.255")
+
+//  output:map[country:中国 province:上海市 city:上海市 zone:未知 location:未知 operator:未知 areacode:20017009000000100] <nil>
 
 	fmt.Println(code, e)
 
@@ -26,14 +28,17 @@ u can find example in the iphelper_test.go
 // u can save the areacode to user`s session
 // get the location info by areacode is more fast than by ip address
 
-	l = store.GetAreacodeLocation(code)
-
-	fmt.Println(l)
+	codeGeo := store.GetAreacodeGeo(code)
+	
+// 	output: 20017009000000100 <nil>
+	fmt.Println(codeGeo)
 
 
 // get all the area info of the ip databases
-
+	
 	table := store.GetMetaTable()
-
-	fmt.Println(table["country"], table["province"], table["city"], table["zone"], table["provider"], table["idc"])
-
+	
+	for typ, areas := range table {
+		fmt.Println(typ, len(areas), areas)
+		fmt.Println("--------------------")
+	}
