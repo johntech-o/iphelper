@@ -209,6 +209,7 @@ func (this *IpStore) getGeocodeByRow(row IpRow) string {
 
 }
 
+// @TODO Parse by Reflect IpRow
 func (this *IpStore) parseBodyLine(buffer []byte) (row IpRow, err error) {
 	buf := bytes.NewBuffer(buffer)
 	if err = binary.Read(buf, binary.BigEndian, &row.Start); err != nil {
@@ -296,8 +297,8 @@ func NewDatFile(w io.Writer) *datFile {
 	}
 }
 
-// get area code
-func (d *datFile) GetCode(typ string, area string) uint16 {
+// get area code by typ
+func (d *datFile) getCode(typ string, area string) uint16 {
 	var code uint16
 	code, ok := d.geoMap[typ][area]
 	if !ok {
@@ -317,12 +318,12 @@ func (d *datFile) writeBody(fields []string) error {
 	end, _ := strconv.ParseUint(fields[1], 10, 32)
 	binary.Write(d, binary.BigEndian, uint32(start))
 	binary.Write(d, binary.BigEndian, uint32(end))
-	binary.Write(d, binary.BigEndian, d.GetCode(AREA_COUNTRY, fields[2]))
-	binary.Write(d, binary.BigEndian, d.GetCode(AREA_PROVINCE, fields[3]))
-	binary.Write(d, binary.BigEndian, d.GetCode(AREA_CITY, fields[4]))
-	binary.Write(d, binary.BigEndian, d.GetCode(AREA_ZONE, fields[5]))
-	binary.Write(d, binary.BigEndian, d.GetCode(AREA_LOCATION, fields[6]))
-	binary.Write(d, binary.BigEndian, d.GetCode(AREA_OPERATOR, fields[7]))
+	binary.Write(d, binary.BigEndian, d.getCode(AREA_COUNTRY, fields[2]))
+	binary.Write(d, binary.BigEndian, d.getCode(AREA_PROVINCE, fields[3]))
+	binary.Write(d, binary.BigEndian, d.getCode(AREA_CITY, fields[4]))
+	binary.Write(d, binary.BigEndian, d.getCode(AREA_ZONE, fields[5]))
+	binary.Write(d, binary.BigEndian, d.getCode(AREA_LOCATION, fields[6]))
+	binary.Write(d, binary.BigEndian, d.getCode(AREA_OPERATOR, fields[7]))
 	return d.err
 }
 
